@@ -1,0 +1,243 @@
+---
+title: "omicron sentiment analysis1"
+output: word_document
+---
+
+``
+```
+```{r}
+#List Of Packages Used
+library(RColorBrewer) 
+library(tm)
+library(twitteR)
+library(ROAuth)
+library(plyr)
+library(stringr)
+library(base64enc)
+library(SnowballC)
+library(ggplot2)
+library(maps)
+```
+
+## R Markdown
+```{r}
+consumer_key = 'LS8TNNyEFgSJS9dsGgIjzRtBp'
+consumer_secret = 'OCc77g0cYjZaaZ3BPkufbxwqbcbThFTKDyvJ3y2BCzpkFHTgWT' 
+access_token= '1479689862504583173-1RW8rAkio3oCNeXX7OHjaYhA6nfSD5' 
+access_secret = 'htLppM4lfGgoZkJ80rzo6Hlz3FwA9waHh9nPk3D7DfRpl'
+```
+
+```{r}
+requestURL<- "https://api.twitter.com/oauth/request_token"
+accessURL<- "https://api.twitter.com/oauth/access_token"
+authURL<- "https://api.twitter.com/oauth/authorize"
+```
+
+
+```{r}
+setup_twitter_oauth(consumer_key ,consumer_secret,access_token,access_secret)
+```
+
+
+```{r}
+#search TWitter
+users<- searchTwitteR("#omicron", resultType="recent",n=300, lang="en")
+ 
+tweet.df = do.call("rbind",lapply(users,as.data.frame))
+```
+
+
+
+```{r}
+#Plotting data on map
+map('world')
+points(tweet.df$longitude,tweet.df$latitude, pch=20, cex=1, col="red")
+```
+
+```{r}
+#Viewing the data
+View(tweet.df)
+```
+
+```{r}
+#Reading sentiment analysis data from Txt document
+pos.words = scan('./positive-words.txt', what='character', comment.char=';')
+neg.words = scan('./negative-words.txt', what='character', comment.char=';')
+```
+
+```{r}
+#Appending some more words to actual words
+pos.words = c(pos.words, 'new','nice' ,'good', 'horizon')
+neg.words = c(neg.words, 'wtf', 'behind','feels', 'ugly', 'back','worse' , 'shitty', 'bad', 'no','freaking','sucks','horrible')
+```
+
+```{r}
+#converting Into dataFrame
+test <-ldply(users,function(t)t$toDataFrame())
+test
+```
+
+```{r}
+score.sentiment = function(sentences, pos.words, neg.words, .progress='none')
+{
+  require(plyr)
+  require(stringr)
+  scores = laply(sentences, function(sentence, pos.words, neg.words) {
+    sentence = gsub('[[:punct:]]', '', sentence)
+    sentence = gsub('[[:cntrl:]]', '', sentence)
+    sentence = gsub('\\d+', '', sentence)
+    sentence = tolower(sentence)
+    word.list = str_split(sentence, '\\s+')
+    words = unlist(word.list)
+    pos.matches = match(words, pos.words)
+    neg.matches = match(words, neg.words)
+    pos.matches = !is.na(pos.matches)
+    neg.matches = !is.na(neg.matches)
+    score <- sum(pos.matches) - sum(neg.matches)
+    return(score)
+  }, pos.words, neg.words, .progress=.progress )
+  
+  scores.df = data.frame(score=scores, text=sentences)
+  return(scores.df)
+}
+```
+
+```{r}
+result <- score.sentiment(test$text,pos.words,neg.words)
+result
+#summarlizing data
+summary(result$score)
+```
+
+```{r}
+#Histogram
+hist(result$score,col="yellow", main="Score of tweets",ylab=" Count of tweets")
+```
+
+```{r}
+#Count No of Tweets
+count(result$score)
+```
+
+```{r}
+#ploting the tweets on qplot
+qplot(result$score,xlab = "Score of tweets")
+```
+
+```{r}
+
+require(wordcloud)
+
+```
+
+```{r}
+negativeTweets = subset(result, score < 0)$text
+
+```
+
+```{r}
+corpus = Corpus(VectorSource(negativeTweets))
+# corpus = Corpus(VectorSource(cmail))
+# create term-document matrix
+tdm = TermDocumentMatrix(
+  corpus,
+  control = list(
+    wordLengths=c(3,20),
+    removePunctuation = TRUE,
+    stopwords = c("the", "a", stopwords("english")),
+    removeNumbers = TRUE, tolower = TRUE) )
+
+```
+
+```{r}
+# convert as matrix
+tdm = as.matrix(tdm)
+
+```
+
+```{r}
+# get word counts in decreasing order
+word_freqs = sort(rowSums(tdm), decreasing=TRUE) 
+word_freqs = word_freqs[-(1:12)]
+# create a data frame with words and their frequencies
+dm = data.frame(word=names(word_freqs), freq=word_freqs)
+
+```
+
+```{r}
+#Plot corpus in a clored graph; need RColorBrewer package
+
+wordcloud(head(dm$word, 100), head(dm$freq, 100), random.order=FALSE, colors=brewer.pal(8, "Dark2"))
+```
+
+
+```{r}
+positiveTweets = subset(result, score > 0)$text
+```
+
+```{r}
+corpus = Corpus(VectorSource(positiveTweets))
+# corpus = Corpus(VectorSource(cmail))
+# create term-document matrix
+tdm = TermDocumentMatrix(
+  corpus,
+  control = list(
+    wordLengths=c(3,20),
+    removePunctuation = TRUE,
+    stopwords = c("the", "a", stopwords("english")),
+    removeNumbers = TRUE, tolower = TRUE) )
+```
+
+
+```{r}
+# convert as matrix
+tdm = as.matrix(tdm)
+```
+
+```{r}
+# get word counts in decreasing order
+word_freqs = sort(rowSums(tdm), decreasing=TRUE) 
+word_freqs = word_freqs[-(1:12)]
+# create a data frame with words and their frequencies
+dm = data.frame(word=names(word_freqs), freq=word_freqs)
+```
+
+```{r}
+wordcloud(head(dm$word, 100), head(dm$freq, 100), random.order=FALSE, colors=brewer.pal(8, "Dark2"))
+```
+
+```{r}
+NeutralTweets = subset(result, score = 0)$text
+```
+
+```{r}
+corpus = Corpus(VectorSource(NeutralTweets))
+# corpus = Corpus(VectorSource(cmail))
+# create term-document matrix
+tdm = TermDocumentMatrix(
+  corpus,
+  control = list(
+    wordLengths=c(3,20),
+    removePunctuation = TRUE,
+    stopwords = c("the", "a", stopwords("english")),
+    removeNumbers = TRUE, tolower = TRUE) )
+```
+
+
+```{r}
+# convert as matrix
+tdm = as.matrix(tdm)
+```
+
+```{r}
+# get word counts in decreasing order
+word_freqs = sort(rowSums(tdm), decreasing=TRUE) 
+word_freqs = word_freqs[-(1:12)]
+# create a data frame with words and their frequencies
+dm = data.frame(word=names(word_freqs), freq=word_freqs)
+```
+
+```{r}
+wordcloud(head(dm$word, 100), head(dm$freq, 100), random.order=FALSE, colors=brewer.pal(8, "Dark2"))
+```
+
